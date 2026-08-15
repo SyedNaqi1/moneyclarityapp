@@ -33,7 +33,7 @@ import {
 import { demoTransactions, categories, customers, suppliers } from "./data";
 import { Page, Transaction, TransactionType } from "./types";
 
-const nav: { id: Page; label: string; icon: any }[] = [
+const nav: [Page, string, any][] = [
   ["dashboard", "Dashboard", LayoutDashboard],
   ["transactions", "Transactions", ReceiptText],
   ["customers", "Customers", Users],
@@ -63,30 +63,36 @@ export default function AppShell({
   const [mobile, setMobile] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("mc-transactions");
+    try {
+      const saved = localStorage.getItem("mc-transactions");
 
-    if (saved) {
-      try {
+      if (saved) {
         setTx(JSON.parse(saved));
-      } catch {
-        console.error("Unable to load saved transactions.");
       }
+    } catch (error) {
+      console.error("Failed to load saved transactions:", error);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("mc-transactions", JSON.stringify(tx));
+    try {
+      localStorage.setItem("mc-transactions", JSON.stringify(tx));
+    } catch (error) {
+      console.error("Failed to save transactions:", error);
+    }
   }, [tx]);
 
   const go = (p: Page) => {
     setPage(p);
     setMobile(false);
 
-    window.history.replaceState(
-      {},
-      "",
-      p === "dashboard" ? "/dashboard" : `/${p}`
-    );
+    if (typeof window !== "undefined") {
+      window.history.replaceState(
+        {},
+        "",
+        p === "dashboard" ? "/dashboard" : `/${p}`
+      );
+    }
   };
 
   const revenue = useMemo(
@@ -305,7 +311,11 @@ export default function AppShell({
             setTx((t) => [
               {
                 ...x,
-                id: crypto.randomUUID(),
+                id:
+                  typeof crypto !== "undefined" &&
+                  typeof crypto.randomUUID === "function"
+                    ? crypto.randomUUID()
+                    : Date.now().toString(),
               },
               ...t,
             ]);
@@ -322,7 +332,11 @@ export default function AppShell({
             setTx((t) => [
               ...items.map((x) => ({
                 ...x,
-                id: crypto.randomUUID(),
+                id:
+                  typeof crypto !== "undefined" &&
+                  typeof crypto.randomUUID === "function"
+                    ? crypto.randomUUID()
+                    : `${Date.now()}-${Math.random()}`,
               })),
               ...t,
             ]);
@@ -334,10 +348,6 @@ export default function AppShell({
     </div>
   );
 }
-
-/* =========================
-   DASHBOARD
-========================= */
 
 function Dashboard({
   tx,
@@ -355,17 +365,9 @@ function Dashboard({
   onImport: () => void;
 }) {
   const unc = tx.filter((x) => !x.category).length;
-
   const missing = tx.filter(
     (x) => x.type === "Expense" && !x.receipt
   ).length;
-
-  const kpis = [
-    ["REVENUE", revenue, "+8.4%", true, ArrowUpRight],
-    ["EXPENSES", expenses, "+3.2%", false, ArrowUpRight],
-    ["NET", net, "+17.8%", true, ArrowUpRight],
-    ["UNCATEGORIZED", unc, "Action needed", false, AlertCircle],
-  ];
 
   return (
     <>
@@ -374,7 +376,6 @@ function Dashboard({
           <h1>
             Good morning, Naqi <span>👋</span>
           </h1>
-
           <p>Here’s your money picture for August.</p>
         </div>
 
@@ -405,7 +406,12 @@ function Dashboard({
       </div>
 
       <div className="kpi-grid">
-        {kpis.map(([label, val, change, pos, Icon]: any) => (
+        {[
+          ["REVENUE", revenue, "+8.4%", true, ArrowUpRight],
+          ["EXPENSES", expenses, "+3.2%", false, ArrowUpRight],
+          ["NET", net, "+17.8%", true, ArrowUpRight],
+          ["UNCATEGORIZED", unc, "Action needed", false, AlertCircle],
+        ].map(([label, val, change, pos, Icon]: any) => (
           <div className="kpi" key={label}>
             <div className="kpi-top">
               <span>{label}</span>
@@ -413,8 +419,7 @@ function Dashboard({
             </div>
 
             <strong>
-              {typeof val === "number" &&
-              label !== "UNCATEGORIZED"
+              {typeof val === "number" && label !== "UNCATEGORIZED"
                 ? money(val)
                 : val}
             </strong>
@@ -579,7 +584,6 @@ function LineChart() {
               stopColor="#1c8c7c"
               stopOpacity=".22"
             />
-
             <stop
               offset="100%"
               stopColor="#1c8c7c"
@@ -659,11 +663,7 @@ function ExpenseBars({ tx }: { tx: Transaction[] }) {
           </div>
 
           <div className="bar-track">
-            <i
-              style={{
-                width: `${(x.v / max) * 100}%`,
-              }}
-            />
+            <i style={{ width: `${(x.v / max) * 100}%` }} />
           </div>
         </div>
       ))}
@@ -693,9 +693,7 @@ function CustomerRows({ tx }: { tx: Transaction[] }) {
           <div>
             <b>{x.c}</b>
             <small>
-              {i === 0
-                ? "Top customer"
-                : "Revenue contributor"}
+              {i === 0 ? "Top customer" : "Revenue contributor"}
             </small>
           </div>
 
@@ -706,11 +704,7 @@ function CustomerRows({ tx }: { tx: Transaction[] }) {
   );
 }
 
-function MiniTransactions({
-  tx,
-}: {
-  tx: Transaction[];
-}) {
+function MiniTransactions({ tx }: { tx: Transaction[] }) {
   return (
     <div className="mini-transactions">
       {tx.map((x) => (
@@ -752,10 +746,6 @@ function MiniTransactions({
   );
 }
 
-/* =========================
-   TRANSACTIONS
-========================= */
-
 function Transactions({
   tx,
   onAdd,
@@ -791,10 +781,7 @@ function Transactions({
         </div>
 
         <div className="row-actions">
-          <button
-            className="button secondary"
-            onClick={onImport}
-          >
+          <button className="button secondary" onClick={onImport}>
             <Upload size={16} />
             Import CSV
           </button>
@@ -845,10 +832,7 @@ function Transactions({
               {money(
                 filtered.reduce(
                   (a, x) =>
-                    a +
-                    (x.type === "Income"
-                      ? x.amount
-                      : -x.amount),
+                    a + (x.type === "Income" ? x.amount : -x.amount),
                   0
                 )
               )}
@@ -869,14 +853,11 @@ function Transactions({
           {filtered.map((x) => (
             <div className="tx-row" key={x.id}>
               <span>
-                {new Date(x.date).toLocaleDateString(
-                  "en-US",
-                  {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  }
-                )}
+                {new Date(x.date).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
               </span>
 
               <div>
@@ -911,7 +892,6 @@ function Transactions({
                 className="more"
                 onClick={() => onDelete(x.id)}
                 title="Delete"
-                aria-label="Delete transaction"
               >
                 <Trash2 size={15} />
               </button>
@@ -922,10 +902,6 @@ function Transactions({
     </>
   );
 }
-
-/* =========================
-   CUSTOMERS / SUPPLIERS
-========================= */
 
 function EntityPage({
   title,
@@ -949,6 +925,7 @@ function EntityPage({
       <div className="title-row">
         <div>
           <div className="page-icon">{icon}</div>
+
           <h1>{title}</h1>
           <p>{subtitle}</p>
         </div>
@@ -979,19 +956,14 @@ function EntityPage({
               <div className="entity-main">
                 <b>{e}</b>
                 <small>
-                  {i === 0
-                    ? "Most active"
-                    : "Business partner"}
+                  {i === 0 ? "Most active" : "Business partner"}
                 </small>
               </div>
 
               <div className="entity-total">
                 <small>
-                  {kind === "revenue"
-                    ? "Revenue"
-                    : "Spend"}
+                  {kind === "revenue" ? "Revenue" : "Spend"}
                 </small>
-
                 <strong>{money(total)}</strong>
               </div>
 
@@ -1003,10 +975,6 @@ function EntityPage({
     </>
   );
 }
-
-/* =========================
-   CATEGORIES
-========================= */
 
 function CategoryPage({ tx }: { tx: Transaction[] }) {
   return (
@@ -1052,21 +1020,17 @@ function CategoryPage({ tx }: { tx: Transaction[] }) {
   );
 }
 
-/* =========================
-   RULES
-========================= */
-
 function RulesPage() {
   const rules = [
     [
       "Fuel",
-      "Description contains “fuel”",
+      'Description contains "fuel"',
       "Fuel",
       "Enabled",
     ],
     [
       "Adobe",
-      "Description contains “adobe”",
+      'Description contains "adobe"',
       "Software",
       "Enabled",
     ],
@@ -1084,8 +1048,8 @@ function RulesPage() {
         <div>
           <h1>Rules</h1>
           <p>
-            Automate repetitive tagging while keeping every
-            match visible.
+            Automate repetitive tagging while keeping every match
+            visible.
           </p>
         </div>
 
@@ -1117,10 +1081,6 @@ function RulesPage() {
     </>
   );
 }
-
-/* =========================
-   INSIGHTS
-========================= */
 
 function InsightsPage({
   tx,
@@ -1155,14 +1115,13 @@ function InsightsPage({
 
         <div>
           <h2>
-            Your net is {money(revenue - expenses)} this
-            month.
+            Your net is {money(revenue - expenses)} this month.
           </h2>
 
           <p>
-            Revenue is <b>8.4% higher</b> while expenses are
-            up <b>3.2%</b>. Your business is generating more
-            money than the previous period.
+            Revenue is <b>8.4% higher</b> while expenses are up{" "}
+            <b>3.2%</b>. Your business is generating more money
+            than the previous period.
           </p>
         </div>
       </div>
@@ -1188,9 +1147,9 @@ function InsightsPage({
 
         <Insight
           title="Receipt coverage"
-          value={`${tx.filter((x) => x.receipt).length}/${
-            tx.filter((x) => x.type === "Expense").length
-          }`}
+          value={`${tx.filter((x) => x.receipt).length}/${tx.filter(
+            (x) => x.type === "Expense"
+          ).length}`}
           text="Recorded expenses with an attached receipt."
         />
       </div>
@@ -1210,7 +1169,9 @@ function Insight({
   return (
     <div className="insight-card">
       <small>{title}</small>
+
       <h3>{value}</h3>
+
       <p>{text}</p>
 
       <button className="link-btn">
@@ -1220,10 +1181,6 @@ function Insight({
     </div>
   );
 }
-
-/* =========================
-   SETTINGS
-========================= */
 
 function SettingsPage() {
   return (
@@ -1329,10 +1286,6 @@ function Shield() {
   return <CheckCircle2 />;
 }
 
-/* =========================
-   ADD TRANSACTION
-========================= */
-
 function AddTransaction({
   onClose,
   onSave,
@@ -1342,7 +1295,6 @@ function AddTransaction({
 }) {
   const [type, setType] =
     useState<TransactionType>("Expense");
-
   const [amount, setAmount] = useState("");
   const [desc, setDesc] = useState("");
   const [category, setCategory] = useState("Fuel");
@@ -1480,10 +1432,6 @@ function AddTransaction({
     </div>
   );
 }
-
-/* =========================
-   IMPORT CSV
-========================= */
 
 function ImportModal({
   onClose,
